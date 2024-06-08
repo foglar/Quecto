@@ -1,4 +1,7 @@
-﻿// Simple Text editor in C# for terminal
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace text_editor
 {
@@ -9,8 +12,7 @@ namespace text_editor
     // - Add syntax highlighting
     // - Add line numbers
     // - Add search and replace
-    
-    
+
     static class Editor
     {
         // Check if file exists and open it
@@ -37,7 +39,7 @@ namespace text_editor
 
             return lines;
         }
-        
+
         static bool IsWord(string word)
         {
             foreach (char c in word)
@@ -50,7 +52,7 @@ namespace text_editor
 
             return true;
         }
-        
+
         static string[] SplitWords(string line)
         {
             List<string> words = new List<string>();
@@ -68,6 +70,8 @@ namespace text_editor
                         words.Add(word);
                         word = "";
                     }
+
+                    words.Add(c.ToString()); // Add non-letter character as separate word
                 }
             }
 
@@ -92,7 +96,7 @@ namespace text_editor
             if (FileExist(path) == 0)
             {
                 string[] lines = LoadFile(path);
-                
+
                 Console.Clear();
                 foreach (var line in lines)
                 {
@@ -104,15 +108,17 @@ namespace text_editor
 
                 Console.SetCursorPosition(x, y);
 
-                int counter = 0;
+                string[] dictionary = SpellChecker.LoadDictionary("dictionary.txt");
+                SpellChecker spellChecker = new SpellChecker(dictionary);
                 while (true)
                 {
                     var w = Console.WindowWidth;
                     var h = Console.WindowHeight;
-                    
+
                     ConsoleKeyInfo keyInfo = Console.ReadKey(true);
                     Console.Clear();
 
+                    bool check_Spelling = false;
                     switch (keyInfo.Key)
                     {
                         // if backspace is pressed remove character on i == y and x position in lines[i]
@@ -122,7 +128,7 @@ namespace text_editor
                             {
                                 x--;
                                 lines[y] = lines[y].Remove(x, 1);
-                            } 
+                            }
                             else if (y > 0)
                             {
                                 x = lines[y - 1].Length;
@@ -160,15 +166,16 @@ namespace text_editor
                         }
                         case ConsoleKey.Enter:
                         {
-                            y++;
-                            x = 0;
                             Array.Resize(ref lines, lines.Length + 1);
                             for (var i = lines.Length - 1; i > y; i--)
                             {
                                 lines[i] = lines[i - 1];
                             }
 
-                            lines[y] = "";
+                            lines[y + 1] = lines[y].Substring(x);
+                            lines[y] = lines[y].Substring(0, x);
+                            y++;
+                            x = 0;
                             break;
                         }
                         case ConsoleKey.UpArrow:
@@ -176,6 +183,7 @@ namespace text_editor
                             if (y > 0)
                             {
                                 y--;
+                                x = Math.Min(x, lines[y].Length);
                             }
 
                             break;
@@ -185,6 +193,7 @@ namespace text_editor
                             if (y < lines.Length - 1)
                             {
                                 y++;
+                                x = Math.Min(x, lines[y].Length);
                             }
 
                             break;
@@ -194,7 +203,7 @@ namespace text_editor
                             if (x > 0)
                             {
                                 x--;
-                            } 
+                            }
                             else if (y > 0)
                             {
                                 y--;
@@ -219,50 +228,51 @@ namespace text_editor
                         }
                         default:
                         {
-                            if (!char.IsControl(keyInfo.KeyChar) && x < w - 1)
+                            if (x < w - 1)
                             {
                                 lines[y] = lines[y].Insert(x, keyInfo.KeyChar.ToString());
                                 x++;
                             }
 
+                            check_Spelling = true;
                             break;
                         }
                     }
-                    
-                    string[] dictionary = SpellChecker.LoadDictionary("dictionary.txt");
-                
+
                     // Correctly parse the words in the file, ignore special characters
                     // Check if the word is spelled correctly
                     // Print the word with red color if it is not spelled correctly
-                
-                    SpellChecker spellChecker = new SpellChecker(dictionary);
-                    counter++;
+
                     for (var i = 0; i < lines.Length; i++)
                     {
-                            // split line into words by space
-                            string[] words = SplitWords(lines[i]);
+                        // split line into words by space
+                        string[] words = SplitWords(lines[i]);
 
-                            foreach (var word in words)
+                        foreach (var word in words)
+                        {
+                            if (check_Spelling && IsWord(word))
                             {
-                                if (counter >= 10)
-                                {
-                                    // Remove special characters and Lowerkase the word
-                                    string word_to_check = new string(word.Where(char.IsLetter).ToArray());
-                                    word_to_check = word_to_check.ToLower();
+                                // Remove special characters and Lowercase the word
+                                string wordToCheck = new string(word.Where(char.IsLetter).ToArray());
+                                wordToCheck = wordToCheck.ToLower();
 
-                                    if (!spellChecker.Check(word_to_check.Trim()))
-                                    {
-                                        Console.ForegroundColor = ConsoleColor.Red;
-                                    }
-                                    counter = 0;
+                                if (!spellChecker.Check(wordToCheck.Trim()))
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
                                 }
 
-                                Console.Write(word + " ");
+                                Console.Write(word);
                                 Console.ResetColor();
                             }
-                            Console.WriteLine();
+                            else
+                            {
+                                Console.Write(word);
+                            }
+                        }
+
+                        Console.WriteLine();
                     }
-                    
+
                     if (keyInfo.Modifiers == ConsoleModifiers.Control && keyInfo.Key == ConsoleKey.S)
                     {
                         File.WriteAllText(path, string.Join("\n", lines));
@@ -277,14 +287,14 @@ namespace text_editor
                     else if (keyInfo.Modifiers == ConsoleModifiers.Control && keyInfo.Key == ConsoleKey.C)
                     {
                         break;
-                    } 
+                    }
 
                     Console.SetCursorPosition(0, h - 1);
                     Console.Write($"File: {path} | Line: {(1 + y)} | Column: {(x + 1)}");
-                    
+
                     Console.SetCursorPosition(x, y);
                 }
-                
+
                 Console.Clear();
             }
         }
